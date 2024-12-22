@@ -1,0 +1,201 @@
+arch: aarch64
+images:
+  # Debianのイメージ
+  - location: "https://cloud.debian.org/images/cloud/bookworm/20241125-1942/debian-12-genericcloud-arm64-20241125-1942.qcow2"
+    arch: "aarch64"
+    digest: "sha512:90241402a244ecd6bb8a5d844db97d18e60ad78f21b3b49e280a4b397179099504945fc89df3db4f1146377120a3743f0da42fcc4ad7ac5644881a4a077e3f1b"
+  - location: "https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-genericcloud-arm64.qcow2"
+    arch: "aarch64"
+cpus: 4
+memory: "4GiB"
+disk: "60GiB"
+
+# サポートされていないマウントタイプ
+#mountTypesUnsupported: ["9p"]
+mountType: "virtiofs"
+mounts:
+  - location: "~"
+    writable: true
+  - location: "/tmp/lima"
+    writable: true
+provision:
+  # システムモードでの初期プロビジョニング
+  - mode: system
+    script: |
+      #!/usr/bin/env bash
+            # ロケールのインストール
+      apt update && apt install -y locales
+      echo "ja_JP.UTF-8 UTF-8" >> /etc/locale.gen
+      locale-gen ja_JP.UTF-8
+      update-locale LANG=ja_JP.UTF-8
+
+      # 日本語フォントのインストール
+      apt install -y fonts-noto-cjk fonts-noto-cjk-extra fonts-ipafont fonts-takao
+
+      # fcitx-mozc (日本語入力システム) のインストール
+      apt install -y fcitx-mozc
+
+      # fcitx をデフォルトの入力メソッドに設定
+      echo "export XMODIFIERS=@im=fcitx" >> /etc/environment
+      echo "export GTK_IM_MODULE=fcitx" >> /etc/environment
+      echo "export QT_IM_MODULE=fcitx" >> /etc/environment
+
+      # 必要に応じて日本語関連パッケージを追加
+      apt install -y task-japanese
+
+      # 日本語環境の確認用メッセージ
+      echo "日本語環境がインストールされました"
+
+      # ■ 基本ツールのインストール
+        apt -y update 
+        echo 'deb http://apt.llvm.org/bullseye/ llvm-toolchain-bullseye-16 main' >> /etc/apt/sources.list
+        echo 'deb-src http://apt.llvm.org/bullseye/ llvm-toolchain-bullseye-16 main' >> /etc/apt/sources.list
+        apt -y install git build-essential curl wget gnupg2 xz-utils openssl net-tools vim ripgrep fd-find duf colordiff libgtk-3-dev libwebkit2gtk-4.0-dev pkg-config nsis
+      # ■ clangの設定とインストール
+        # GPG キーの追加
+        wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -
+        # パッケージリストの更新
+        apt-get update --fix-missing
+        # clang 16 のインストール
+        apt-get -y install clang-16 || echo "clang-16 installation failed"
+        # clang のパスを設定
+        update-alternatives --install /usr/bin/clang clang /usr/bin/clang-16 1
+        update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-16 1
+      # ■ OpenJDKのインストール
+        mkdir /usr/java
+        cd /usr/java
+        wget https://download.java.net/java/GA/jdk23/3c5b90190c68498b986a97f276efd28a/37/GPL/openjdk-23_linux-aarch64_bin.tar.gz
+        tar zxvf openjdk-23_linux-aarch64_bin.tar.gz
+        rm -rf openjdk-23_linux-aarch64_bin.tar.gz
+      # ■ Go言語のインストール
+        GOVERSION=1.23.3
+        curl -s -o /tmp/go.tar.gz https://storage.googleapis.com/golang/go${GOVERSION}.linux-arm64.tar.gz
+        rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go.tar.gz
+        rm /tmp/go.tar.gz
+      # ■ Dockerのインストール
+        apt update -y
+        apt install -y apt-transport-https ca-certificates curl gnupg lsb-release
+        curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --batch --yes --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+        apt update -y
+        apt install -y docker-ce docker-ce-cli containerd.io
+        systemctl start docker
+        systemctl enable docker
+      # ■ Pythonのインストール
+        PYTHONVERSION=3.12.6
+        PYTHONVERSIONBIN=3.12
+        mkdir -p /usr/src
+        cd /usr/src
+        #apt update && apt install -y python3 python3-pip
+        #pip3 install python-language-server
+        apt update -y
+        apt install -y curl git \
+        software-properties-common build-essential \
+        libnss3-dev zlib1g-dev libgdbm-dev libncurses5-dev \
+        libssl-dev libffi-dev libreadline-dev libsqlite3-dev libbz2-dev
+        curl -s -o /tmp/Python-$PYTHONVERSION.tgz  https://www.python.org/ftp/python/$PYTHONVERSION/Python-$PYTHONVERSION.tgz
+        tar xvf /tmp/Python-$PYTHONVERSION.tgz
+        rm -rf /tmp/Python-$PYTHONVERSION.tgz
+        cd /usr/src/Python-$PYTHONVERSION
+        ./configure --enable-optimizations
+        make altinstall
+        ln -s /usr/local/bin/python$PYTHONVERSIONBIN /usr/local/bin/python3
+        ln -s /usr/local/bin/pip$PYTHONVERSIONBIN /usr/local/bin/pip3
+
+  # ユーザーモードでのプロビジョニング
+  - mode: user
+    script: |
+      #!/usr/bin/env bash
+      # ユーザーロケール設定
+      echo 'export LANG=ja_JP.UTF-8' >> ~/.bashrc
+      echo 'export LANGUAGE=ja_JP:ja' >> ~/.bashrc
+      echo 'export LC_ALL=ja_JP.UTF-8' >> ~/.bashrc
+      source ~/.bashrc
+
+      # 入力メソッドを有効化
+      mkdir -p ~/.config/fcitx
+      echo "EnabledIMList=mozc" > ~/.config/fcitx/config
+      
+      # ■ Java環境変数の設定
+        echo "JAVA_HOME=/usr/java/jdk-23"  >> ~/.bashrc
+        echo "PATH=\"/usr/java/jdk-23/bin:\$PATH\""  >> ~/.bashrc
+        echo "CLASSPATH=\".:/usr/java/jdk-23/jre/lib:/usr/java/jdk-23/lib:/usr/java/jdk-23/lib/tools.jar\""  >> ~/.bashrc
+      # ■ Node.jsのインストール
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.0/install.sh | bash
+        export NVM_DIR="$HOME/.nvm"
+        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+        # Node.jsをインストールし、使用可能に設定
+        nvm install 22
+        nvm use 22
+      # ■ ユーザーをdockerグループに追加
+        sudo usermod -aG docker $(whoami)
+        newgrp docker
+      # ■ Go環境設定とツールインストール
+        echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
+        export PATH=$PATH:/usr/local/go/bin
+        echo 'export PATH=$PATH:$(go env GOPATH)/bin' >> ~/.bashrc
+        export PATH=$PATH:$(go env GOPATH)/bin
+        go install github.com/jesseduffield/lazydocker@latest
+        go install github.com/jesseduffield/lazygit@latest
+        go install github.com/air-verse/air@latest
+        go install github.com/jfeliu007/goplantuml/cmd/goplantuml@latest
+        go install github.com/wailsapp/wails/v2/cmd/wails@latest
+        go install github.com/goreleaser/goreleaser/v2@latest
+        go install golang.org/x/tools/cmd/godoc@latest
+      # ■ Starshipのインストール
+        curl -sS https://starship.rs/install.sh | sh -s -- -y
+        echo 'eval "$(starship init bash)"' >> ~/.bashrc
+      # ■ Rustツールのインストール
+        curl https://sh.rustup.rs -sSf | sh -s -- -y
+        source $HOME/.cargo/env
+      # ■ Tool
+        cargo install "eza"
+        cargo install "bat"
+        cargo install "procs"
+        cargo install "hexyl"
+        cargo install "tokei"
+        cargo install "bottom"
+        cargo install "du-dust"
+
+      # カスタムエイリアスの定義
+      cat << 'EOF' >> ~/.bashrc
+        alias ei="eza --icons --git"
+        alias ea="eza -a --icons --git"
+        alias ee="eza -aahl --icons --git"
+        alias et="eza -T -a -I 'node_modules|.git|.cache' --icons"
+        alias etd="eza -T -a -D -I 'node_modules|.git|.cache' --icons"
+        alias ls=ei
+        alias la=ea
+        alias ll=ee
+        alias lt=et
+        alias ltd=etd
+        alias l="clear && ls"
+        alias clt="clear && lt"
+        alias cltd="clear && ltd"
+        alias catt='bat --paging=never'
+        alias ps='procs'
+        alias grep='rg'
+        alias od='hexyl'
+        alias wc='tokei'
+        alias top='btm'
+        alias du='dust'
+        alias df='duf'
+        alias dockerv='lazydocker'
+        alias gitv='lazygit'ls
+        alias gitt='git log --graph --all --date=format-local:"%Y/%m/%d %H:%M:%S" --format="%cd %x09%C(cyan bold)%an%Creset%x09%C(yellow)%h%Creset %C(magenta reverse)%d%Creset %s"'
+      EOF
+      source ~/.bashrc
+ssh:
+  loadDotSSHPubKeys: false
+  localPort: 60006
+portForwards:
+  - guestSocket: "/run/user/{{.UID}}/docker.sock"
+    hostSocket: "{{.Dir}}/sock/docker.sock"
+  - guestIP: "127.0.0.1"
+    guestPortRange: [1024, 65535]
+    hostIP: "127.0.0.1"
+    hostPortRange: [1024, 65535]
+#  - guestPort: 80    # ゲストの80番ポートをホストの8080番ポートにフォワード
+#    hostPort: 8080
+#  - guestPort: 443   # ゲストの443番ポートをホストの8443番ポートにフォワード
+#    hostPort: 8443

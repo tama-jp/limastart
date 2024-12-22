@@ -4,6 +4,13 @@ https://github.com/tama-jp/limastart
 
 
 ```shell
+go install github.com/tama-jp/limastart@latest
+```
+
+-------------------------------------------
+
+```shell
+
 go mod init github.com/tama-jp/limastart
 ```
 
